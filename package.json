@@ -1,11 +1,11 @@
 {
 	"name": "p-queue-multi",
-	"version": "8.0.1",
+	"version": "8.0.2",
 	"description": "Promise queue with concurrency control",
 	"license": "MIT",
 	"repository": "aeolun/p-queue",
 	"funding": "https://github.com/sponsors/sindresorhus",
-	"type": "module",
+	"type": "commonjs",
 	"exports": {
 		"types": "./dist/types/index.d.ts",
 		"require": "./dist/cjs/index.js",
