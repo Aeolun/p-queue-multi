@@ -1,5 +1,5 @@
 import {expectType} from 'tsd';
-import PQueue from '../source/index.js';
+import PQueue from '../src/index.js';
 
 const queue = new PQueue();
 

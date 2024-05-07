@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "moduleResolution": "nodenext",
+    "module": "nodenext",
+    "declaration": false,
+    "declarationDir": null,
+    "outDir": "dist/esm/",
+  },
+}

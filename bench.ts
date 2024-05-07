@@ -1,5 +1,5 @@
 import Benchmark, {type Deferred, type Event} from 'benchmark';
-import PQueue from './source/index.js';
+import PQueue from './src/index.js';
 
 const suite = new Benchmark.Suite();
 

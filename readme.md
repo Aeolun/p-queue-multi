@@ -1,27 +1,30 @@
-# p-queue
+# p-queue-multi
 
 > Promise queue with concurrency control
+
+> [!NOTE]
+> I copied this from [p-queue](https://github.comt/sindresorhus/p-queue) by Sindre Sorhus since I have no patience for dealing ESM nazis. This package will work in either CJS or ESM environments.
 
 Useful for rate-limiting async (or sync) operations. For example, when interacting with a REST API or when doing CPU/memory intensive tasks.
 
 For servers, you probably want a Redis-backed [job queue](https://github.com/sindresorhus/awesome-nodejs#job-queues) instead.
 
-Note that the project is feature complete. We are happy to review pull requests, but we don't plan any further development. We are also not answering email support questions.
-
 ## Install
 
 ```sh
-npm install p-queue
+npm install p-queue-multi
 ```
 
-**Warning:** This package is native [ESM](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules) and no longer provides a CommonJS export. If your project uses CommonJS, you'll have to [convert to ESM](https://gist.github.com/sindresorhus/a39789f98801d908bbc7ff3ecc99d99c). Please don't open issues for questions regarding CommonJS / ESM.
+## Updates
+
+When an update is released on the original repo, I'll copy over the source and release the same version here. This is assuming there's no issues during publish. If not, __the minor version may be bumped higher than the original repo__ to fix those.
 
 ## Usage
 
 Here we run only one promise at the time. For example, set `concurrency` to 4 to run four promises at the same time.
 
 ```js
-import PQueue from 'p-queue';
+import PQueue from 'p-queue-multi';
 import got from 'got';
 
 const queue = new PQueue({concurrency: 1});
@@ -142,7 +145,7 @@ Priority of operation. Operations with greater priority will be scheduled first.
 [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal) for cancellation of the operation. When aborted, it will be removed from the queue and the `queue.add()` call will reject with an [error](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/reason). If the operation is already running, the signal will need to be handled by the operation itself.
 
 ```js
-import PQueue from 'p-queue';
+import PQueue from 'p-queue-multi';
 import got, {CancelError} from 'got';
 
 const queue = new PQueue();
@@ -221,7 +224,7 @@ Size of the queue, filtered by the given options.
 For example, this can be used to find the number of items remaining in the queue with a specific priority level.
 
 ```js
-import PQueue from 'p-queue';
+import PQueue from 'p-queue-multi';
 
 const queue = new PQueue();
 
@@ -256,7 +259,7 @@ Emitted as each item is processed in the queue for the purpose of tracking progr
 
 ```js
 import delay from 'delay';
-import PQueue from 'p-queue';
+import PQueue from 'p-queue-multi';
 
 const queue = new PQueue({concurrency: 2});
 
@@ -278,7 +281,7 @@ Emitted when an item completes without error.
 
 ```js
 import delay from 'delay';
-import PQueue from 'p-queue';
+import PQueue from 'p-queue-multi';
 
 const queue = new PQueue({concurrency: 2});
 
@@ -295,7 +298,7 @@ Emitted if an item throws an error.
 
 ```js
 import delay from 'delay';
-import PQueue from 'p-queue';
+import PQueue from 'p-queue-multi';
 
 const queue = new PQueue({concurrency: 2});
 
@@ -320,7 +323,7 @@ The difference with `empty` is that `idle` guarantees that all work from the que
 
 ```js
 import delay from 'delay';
-import PQueue from 'p-queue';
+import PQueue from 'p-queue-multi';
 
 const queue = new PQueue();
 
@@ -351,7 +354,7 @@ Emitted every time a task is completed and the number of pending or queued tasks
 
 ```js
 import delay from 'delay';
-import PQueue from 'p-queue';
+import PQueue from 'p-queue-multi';
 
 const queue = new PQueue();
 
@@ -382,7 +385,7 @@ A more advanced example to help you understand the flow.
 
 ```js
 import delay from 'delay';
-import PQueue from 'p-queue';
+import PQueue from 'p-queue-multi';
 
 const queue = new PQueue({concurrency: 1});
 
@@ -451,7 +454,7 @@ $ node example.js
 For implementing more complex scheduling policies, you can provide a QueueClass in the options:
 
 ```js
-import PQueue from 'p-queue';
+import PQueue from 'p-queue-multi';
 
 class QueueClass {
 	constructor() {
@@ -478,7 +481,7 @@ class QueueClass {
 const queue = new PQueue({queueClass: QueueClass});
 ```
 
-`p-queue` will call corresponding methods to put and get operations from this queue.
+`p-queue-multi` will call corresponding methods to put and get operations from this queue.
 
 ## FAQ
 
