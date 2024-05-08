@@ -1,5 +1,5 @@
 import {EventEmitter} from 'eventemitter3';
-import pTimeout, {TimeoutError} from 'p-timeout';
+import pTimeout, {TimeoutError} from './p-timeout.js';
 import {type Queue, type RunFunction} from './queue.js';
 import PriorityQueue from './priority-queue.js';
 import {type QueueAddOptions, type Options, type TaskOptions} from './options.js';
@@ -262,10 +262,12 @@ export default class PQueue<QueueType extends Queue<RunFunction, EnqueueOptionsT
 					resolve(result);
 					this.emit('completed', result);
 				} catch (error: unknown) {
-					if (error instanceof TimeoutError && !options.throwOnTimeout) {
+					console.log(error)
+					if (error instanceof TimeoutError && options.throwOnTimeout === false) {
 						resolve();
 						return;
 					}
+					console.log('not returned')
 
 					reject(error);
 					this.emit('error', error);
@@ -400,7 +402,6 @@ export default class PQueue<QueueType extends Queue<RunFunction, EnqueueOptionsT
 	For example, this can be used to find the number of items remaining in the queue with a specific priority level.
 	*/
 	sizeBy(options: Readonly<Partial<EnqueueOptionsType>>): number {
-		// eslint-disable-next-line unicorn/no-array-callback-reference
 		return this.#queue.filter(options).length;
 	}
 
@@ -419,5 +420,6 @@ export default class PQueue<QueueType extends Queue<RunFunction, EnqueueOptionsT
 	}
 }
 
+export * from './p-timeout.js';
 export type {Queue} from './queue.js';
 export {type QueueAddOptions, type Options} from './options.js';

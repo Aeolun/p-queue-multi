@@ -1,6 +1,6 @@
 {
 	"name": "p-queue-multi",
-	"version": "8.0.2",
+	"version": "8.0.3",
 	"description": "Promise queue with concurrency control",
 	"license": "MIT",
 	"repository": "aeolun/p-queue",
@@ -17,7 +17,7 @@
 	},
 	"scripts": {
 		"build": "del-cli dist && tsc && tsc -p tsconfig.module.json",
-		"test": "xo && ava && del-cli dist && tsc && tsd",
+		"test": "vitest && del-cli dist && tsc && tsd",
 		"bench": "node --import=tsx/esm bench.ts",
 		"prepublishOnly": "del-cli dist && tsc"
 	},
@@ -50,13 +50,12 @@
 		"bluebird"
 	],
 	"dependencies": {
-		"eventemitter3": "^5.0.1",
-		"p-timeout": "^6.1.2"
+		"eventemitter3": "^5.0.1"
 	},
 	"devDependencies": {
 		"@types/benchmark": "^2.1.5",
 		"@types/node": "^20.12.10",
-		"ava": "^5.3.1",
+		"vitest": "^1.6.0",
 		"benchmark": "^2.1.4",
 		"del-cli": "^5.1.0",
 		"delay": "^6.0.0",
@@ -85,7 +84,12 @@
 		"rules": {
 			"@typescript-eslint/member-ordering": "off",
 			"@typescript-eslint/no-floating-promises": "off",
-			"@typescript-eslint/no-invalid-void-type": "off"
+			"@typescript-eslint/no-invalid-void-type": "off",
+			"@typescript-eslint/no-unnecessary-type-assertion": "off",
+			"@typescript-eslint/no-unsafe-call": "off",
+			"@typescript-eslint/no-unsafe-assignment": "off",
+			"@typescript-eslint/no-unsafe-argument": "off",
+			"unicorn/no-array-callback-reference": "off"
 		}
 	}
 }

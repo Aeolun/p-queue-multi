@@ -1,21 +1,21 @@
 /* eslint-disable no-new */
 import EventEmitter from 'eventemitter3';
-import test from 'ava';
+import {test, expect} from 'vitest';
 import delay from 'delay';
 import inRange from 'in-range';
 import timeSpan from 'time-span';
 import randomInt from 'random-int';
 import pDefer from 'p-defer';
-import PQueue, {AbortError} from '../src/index.js';
+import PQueue, {TimeoutError} from '../src/index.js';
 
 const fixture = Symbol('fixture');
 
 test('.add()', async t => {
 	const queue = new PQueue();
 	const promise = queue.add(async () => fixture);
-	t.is(queue.size, 0);
-	t.is(queue.pending, 1);
-	t.is(await promise, fixture);
+	expect(queue.size).toBe(0);
+	expect(queue.pending).toBe(1);
+	expect(await promise).toBe(fixture);
 });
 
 test('.add() - limited concurrency', async t => {
@@ -26,11 +26,11 @@ test('.add() - limited concurrency', async t => {
 		return fixture;
 	});
 	const promise3 = queue.add(async () => fixture);
-	t.is(queue.size, 1);
-	t.is(queue.pending, 2);
-	t.is(await promise, fixture);
-	t.is(await promise2, fixture);
-	t.is(await promise3, fixture);
+	expect(queue.size).toBe(1);
+	expect(queue.pending).toBe(2);
+	expect(await promise).toBe(fixture);
+	expect(await promise2).toBe(fixture);
+	expect(await promise3).toBe(fixture);
 });
 
 test('.add() - concurrency: 1', async t => {
@@ -48,9 +48,8 @@ test('.add() - concurrency: 1', async t => {
 		return value!;
 	});
 
-	// eslint-disable-next-line unicorn/no-array-callback-reference
-	t.deepEqual(await Promise.all(input.map(mapper)), [10, 20, 30]);
-	t.true(inRange(end(), {start: 590, end: 650}));
+	await expect(Promise.all(input.map(mapper))).resolves.toMatchObject([10, 20, 30]);
+	expect(inRange(end(), {start: 590, end: 650})).toBeTruthy();
 });
 
 test('.add() - concurrency: 5', async t => {
@@ -60,8 +59,8 @@ test('.add() - concurrency: 5', async t => {
 
 	const input = Array.from({length: 100}).fill(0).map(async () => queue.add(async () => {
 		running++;
-		t.true(running <= concurrency);
-		t.true(queue.pending <= concurrency);
+		expect(running <= concurrency).toBeTruthy();
+		expect(queue.pending <= concurrency).toBeTruthy();
 		await delay(randomInt(30, 200));
 		running--;
 	}));
@@ -77,19 +76,21 @@ test('.add() - update concurrency', async t => {
 	const input = Array.from({length: 100}).fill(0).map(async (_value, index) => queue.add(async () => {
 		running++;
 
-		t.true(running <= concurrency);
-		t.true(queue.pending <= concurrency);
+		expect(running <= concurrency).toBeTruthy();
+		expect(queue.pending <= concurrency).toBeTruthy();
 
 		await delay(randomInt(30, 200));
 		running--;
 
 		if (index % 30 === 0) {
 			queue.concurrency = --concurrency;
-			t.is(queue.concurrency, concurrency);
+			expect(queue.concurrency).toBe(concurrency);
 		}
 	}));
 
 	await Promise.all(input);
+}, {
+	timeout: 15000
 });
 
 test('.add() - priority', async t => {
@@ -102,7 +103,7 @@ test('.add() - priority', async t => {
 	queue.add(async () => result.push(3), {priority: 2});
 	queue.add(async () => result.push(0), {priority: -1});
 	await queue.onEmpty();
-	t.deepEqual(result, [1, 3, 1, 2, 0, 0]);
+	expect(result).toMatchObject([1, 3, 1, 2, 0, 0]);
 });
 
 test('.sizeBy() - priority', async t => {
@@ -111,53 +112,61 @@ test('.sizeBy() - priority', async t => {
 	queue.add(async () => 0, {priority: 1});
 	queue.add(async () => 0, {priority: 0});
 	queue.add(async () => 0, {priority: 1});
-	t.is(queue.sizeBy({priority: 1}), 2);
-	t.is(queue.sizeBy({priority: 0}), 1);
+	expect(queue.sizeBy({priority: 1})).toBe(2);
+	expect(queue.sizeBy({priority: 0})).toBe(1);
 	queue.clear();
 	await queue.onEmpty();
-	t.is(queue.sizeBy({priority: 1}), 0);
-	t.is(queue.sizeBy({priority: 0}), 0);
+	expect(queue.sizeBy({priority: 1})).toBe(0);
+	expect(queue.sizeBy({priority: 0})).toBe(0);
 });
 
 test('.add() - timeout without throwing', async t => {
 	const result: string[] = [];
 	const queue = new PQueue({timeout: 300, throwOnTimeout: false});
-	queue.add(async () => {
-		await delay(400);
-		result.push('🐌');
-	});
-	queue.add(async () => {
-		await delay(250);
-		result.push('🦆');
-	});
-	queue.add(async () => {
-		await delay(310);
-		result.push('🐢');
-	});
-	queue.add(async () => {
-		await delay(100);
-		result.push('🐅');
-	});
-	queue.add(async () => {
-		result.push('⚡️');
-	});
-	await queue.onIdle();
-	t.deepEqual(result, ['⚡️', '🐅', '🦆']);
-});
-
-test.failing('.add() - timeout with throwing', async t => {
-	const result: string[] = [];
-	const queue = new PQueue({timeout: 300, throwOnTimeout: true});
-	await t.throwsAsync(queue.add(async () => {
+	const promises: any[] = [];
+	promises.push(queue.add(async () => {
 		await delay(400);
 		result.push('🐌');
 	}));
-	queue.add(async () => {
+	promises.push(queue.add(async () => {
+		await delay(250);
+		result.push('🦆');
+	}));
+	promises.push(queue.add(async () => {
+		await delay(310);
+		result.push('🐢');
+	}));
+	promises.push(queue.add(async () => {
+		await delay(100);
+		result.push('🐅');
+	}));
+	promises.push(queue.add(async () => {
+		result.push('⚡️');
+	}));
+	await queue.onIdle();
+	expect(result).toStrictEqual(['⚡️', '🐅', '🦆']);
+	await Promise.allSettled(promises);
+});
+
+test('.add() - timeout with throwing', async t => {
+	const result: string[] = [];
+	const queue = new PQueue({timeout: 300, throwOnTimeout: true});
+	const delayedPromise = expect(async () => {
+		try {
+			await queue.add(async () => {
+				await delay(400);
+				result.push('🐌');
+			})
+		} catch(error) {
+			expect(error).toBeInstanceOf(TimeoutError);
+		}
+	}).rejects;
+	await queue.add(async () => {
 		await delay(200);
 		result.push('🦆');
 	});
 	await queue.onIdle();
-	t.deepEqual(result, ['🦆']);
+	expect(result).toMatchObject(['🦆']);
 });
 
 test('.add() - change timeout in between', async t => {
@@ -167,19 +176,20 @@ test('.add() - change timeout in between', async t => {
 	const queue = new PQueue({timeout: initialTimeout, throwOnTimeout: false, concurrency: 2});
 	queue.add(async () => {
 		const {timeout} = queue;
-		t.deepEqual(timeout, initialTimeout);
+		expect(timeout).toMatchObject(initialTimeout);
 		await delay(300);
 		result.push('🐌');
 	});
 	queue.timeout = newTimeout;
 	queue.add(async () => {
 		const {timeout} = queue;
-		t.deepEqual(timeout, newTimeout);
+		expect(timeout).toMatchObject(newTimeout);
 		await delay(100);
 		result.push('🐅');
 	});
 	await queue.onIdle();
-	t.deepEqual(result, ['🐅']);
+	expect(result).toMatchObject(['🐅']);
+	await delay(300)
 });
 
 test('.onEmpty()', async t => {
@@ -187,21 +197,21 @@ test('.onEmpty()', async t => {
 
 	queue.add(async () => 0);
 	queue.add(async () => 0);
-	t.is(queue.size, 1);
-	t.is(queue.pending, 1);
+	expect(queue.size).toBe(1);
+	expect(queue.pending).toBe(1);
 	await queue.onEmpty();
-	t.is(queue.size, 0);
+	expect(queue.size).toBe(0);
 
 	queue.add(async () => 0);
 	queue.add(async () => 0);
-	t.is(queue.size, 1);
-	t.is(queue.pending, 1);
+	expect(queue.size).toBe(1);
+	expect(queue.pending).toBe(1);
 	await queue.onEmpty();
-	t.is(queue.size, 0);
+	expect(queue.size).toBe(0);
 
 	// Test an empty queue
 	await queue.onEmpty();
-	t.is(queue.size, 0);
+	expect(queue.size).toBe(0);
 });
 
 test('.onIdle()', async t => {
@@ -210,20 +220,20 @@ test('.onIdle()', async t => {
 	queue.add(async () => delay(100));
 	queue.add(async () => delay(100));
 	queue.add(async () => delay(100));
-	t.is(queue.size, 1);
-	t.is(queue.pending, 2);
+	expect(queue.size).toBe(1);
+	expect(queue.pending).toBe(2);
 	await queue.onIdle();
-	t.is(queue.size, 0);
-	t.is(queue.pending, 0);
+	expect(queue.size).toBe(0);
+	expect(queue.pending).toBe(0);
 
 	queue.add(async () => delay(100));
 	queue.add(async () => delay(100));
 	queue.add(async () => delay(100));
-	t.is(queue.size, 1);
-	t.is(queue.pending, 2);
+	expect(queue.size).toBe(1);
+	expect(queue.pending).toBe(2);
 	await queue.onIdle();
-	t.is(queue.size, 0);
-	t.is(queue.pending, 0);
+	expect(queue.size).toBe(0);
+	expect(queue.pending).toBe(0);
 });
 
 test('.onSizeLessThan()', async t => {
@@ -236,29 +246,29 @@ test('.onSizeLessThan()', async t => {
 	queue.add(async () => delay(100));
 
 	await queue.onSizeLessThan(4);
-	t.is(queue.size, 3);
-	t.is(queue.pending, 1);
+	expect(queue.size).toBe(3);
+	expect(queue.pending).toBe(1);
 
 	await queue.onSizeLessThan(2);
-	t.is(queue.size, 1);
-	t.is(queue.pending, 1);
+	expect(queue.size).toBe(1);
+	expect(queue.pending).toBe(1);
 
 	await queue.onSizeLessThan(10);
-	t.is(queue.size, 1);
-	t.is(queue.pending, 1);
+	expect(queue.size).toBe(1);
+	expect(queue.pending).toBe(1);
 
 	await queue.onSizeLessThan(1);
-	t.is(queue.size, 0);
-	t.is(queue.pending, 1);
+	expect(queue.size).toBe(0);
+	expect(queue.pending).toBe(1);
 });
 
 test('.onIdle() - no pending', async t => {
 	const queue = new PQueue();
-	t.is(queue.size, 0);
-	t.is(queue.pending, 0);
+	expect(queue.size).toBe(0);
+	expect(queue.pending).toBe(0);
 
 	// eslint-disable-next-line @typescript-eslint/no-confusing-void-expression
-	t.is(await queue.onIdle(), undefined);
+	expect(queue.onIdle()).resolves.toBe(undefined);
 });
 
 test('.clear()', t => {
@@ -269,10 +279,10 @@ test('.clear()', t => {
 	queue.add(async () => delay(20_000));
 	queue.add(async () => delay(20_000));
 	queue.add(async () => delay(20_000));
-	t.is(queue.size, 4);
-	t.is(queue.pending, 2);
+	expect(queue.size).toBe(4);
+	expect(queue.pending).toBe(2);
 	queue.clear();
-	t.is(queue.size, 0);
+	expect(queue.size).toBe(0);
 });
 
 test('.addAll()', async t => {
@@ -280,126 +290,117 @@ test('.addAll()', async t => {
 	const fn = async (): Promise<symbol> => fixture;
 	const functions = [fn, fn];
 	const promise = queue.addAll(functions);
-	t.is(queue.size, 0);
-	t.is(queue.pending, 2);
-	t.deepEqual(await promise, [fixture, fixture]);
+	expect(queue.size).toBe(0);
+	expect(queue.pending).toBe(2);
+	expect(await promise).toMatchObject([fixture, fixture]);
 });
 
 test('enforce number in options.concurrency', t => {
-	t.throws(
+	expect(
 		() => {
 			new PQueue({concurrency: 0});
-		},
-		{instanceOf: TypeError},
-	);
+		}).toThrow(TypeError);
 
-	t.throws(
+	expect(
 		() => {
 			new PQueue({concurrency: undefined});
-		},
-		{instanceOf: TypeError},
-	);
+		}).toThrow(TypeError);
 
-	t.notThrows(() => {
+	expect(() => {
 		new PQueue({concurrency: 1});
-	});
+	}).not.toThrow();
 
-	t.notThrows(() => {
+	expect(() => {
 		new PQueue({concurrency: 10});
-	});
+	}).not.toThrow();
 
-	t.notThrows(() => {
+	expect(() => {
 		new PQueue({concurrency: Number.POSITIVE_INFINITY});
-	});
+	}).not.toThrow();
 });
 
 test('enforce number in queue.concurrency', t => {
-	t.throws(
+	expect(
 		() => {
 			(new PQueue()).concurrency = 0;
 		},
-		{instanceOf: TypeError},
-	);
+	).toThrow(TypeError);
 
-	t.throws(
+	expect(
 		() => {
 			// @ts-expect-error Testing
 			(new PQueue()).concurrency = undefined;
 		},
-		{instanceOf: TypeError},
-	);
+	).toThrow(TypeError);
 
-	t.notThrows(() => {
+	expect(() => {
 		(new PQueue()).concurrency = 1;
-	});
+	}).not.toThrow();
 
-	t.notThrows(() => {
+	expect(() => {
 		(new PQueue()).concurrency = 10;
-	});
+	}).not.toThrow();
 
-	t.notThrows(() => {
+	expect(() => {
 		(new PQueue()).concurrency = Number.POSITIVE_INFINITY;
-	});
+	}).not.toThrow();
 });
 
 test('enforce number in options.intervalCap', t => {
-	t.throws(
+	expect(
 		() => {
 			new PQueue({intervalCap: 0});
 		},
-		{instanceOf: TypeError},
-	);
+	).toThrow(TypeError);
 
-	t.throws(
+	expect(
 		() => {
 			new PQueue({intervalCap: undefined});
 		},
-		{instanceOf: TypeError},
-	);
+	)
+		.toThrow(TypeError);
 
-	t.notThrows(() => {
+	expect(() => {
 		new PQueue({intervalCap: 1});
-	});
+	}).not.toThrow();
 
-	t.notThrows(() => {
+	expect(() => {
 		new PQueue({intervalCap: 10});
-	});
+	}).not.toThrow();
 
-	t.notThrows(() => {
+	expect(() => {
 		new PQueue({intervalCap: Number.POSITIVE_INFINITY});
-	});
+	}).not.toThrow();
 });
 
 test('enforce finite in options.interval', t => {
-	t.throws(
+	expect(
 		() => {
 			new PQueue({interval: -1});
 		},
-		{instanceOf: TypeError},
-	);
+	).toThrow(TypeError);
 
-	t.throws(
+	expect(
 		() => {
 			new PQueue({interval: undefined});
 		},
-		{instanceOf: TypeError},
-	);
+	).toThrow(TypeError);
 
-	t.throws(() => {
+	expect(() => {
 		new PQueue({interval: Number.POSITIVE_INFINITY});
-	});
+	}).toThrow(TypeError);
 
-	t.notThrows(() => {
+	expect(() => {
 		new PQueue({interval: 0});
-	});
+	}).not.toThrow();
 
-	t.notThrows(() => {
+	expect(() => {
 		new PQueue({interval: 10});
-	});
+	}).not.toThrow();
 
-	t.throws(() => {
+	expect(() => {
 		new PQueue({interval: Number.POSITIVE_INFINITY});
-	});
+	}).toThrow();
 });
 
 test('autoStart: false', t => {
@@ -409,17 +410,17 @@ test('autoStart: false', t => {
 	queue.add(async () => delay(20_000));
 	queue.add(async () => delay(20_000));
 	queue.add(async () => delay(20_000));
-	t.is(queue.size, 4);
-	t.is(queue.pending, 0);
-	t.is(queue.isPaused, true);
+	expect(queue.size).toBe(4);
+	expect(queue.pending).toBe(0);
+	expect(queue.isPaused).toBe(true);
 
 	queue.start();
-	t.is(queue.size, 2);
-	t.is(queue.pending, 2);
-	t.is(queue.isPaused, false);
+	expect(queue.size).toBe(2);
+	expect(queue.pending).toBe(2);
+	expect(queue.isPaused).toBe(false);
 
 	queue.clear();
-	t.is(queue.size, 0);
+	expect(queue.size).toBe(0);
 });
 
 test('.start() - return this', async t => {
@@ -428,21 +429,21 @@ test('.start() - return this', async t => {
 	queue.add(async () => delay(100));
 	queue.add(async () => delay(100));
 	queue.add(async () => delay(100));
-	t.is(queue.size, 3);
-	t.is(queue.pending, 0);
+	expect(queue.size).toBe(3);
+	expect(queue.pending).toBe(0);
 	await queue.start().onIdle();
-	t.is(queue.size, 0);
-	t.is(queue.pending, 0);
+	expect(queue.size).toBe(0);
+	expect(queue.pending).toBe(0);
 });
 
 test('.start() - not paused', t => {
 	const queue = new PQueue();
 
-	t.falsy(queue.isPaused);
+	expect(queue.isPaused).toBeFalsy();
 
 	queue.start();
 
-	t.falsy(queue.isPaused);
+	expect(queue.isPaused).toBeFalsy();
 });
 
 test('.pause()', t => {
@@ -454,28 +455,28 @@ test('.pause()', t => {
 	queue.add(async () => delay(20_000));
 	queue.add(async () => delay(20_000));
 	queue.add(async () => delay(20_000));
-	t.is(queue.size, 5);
-	t.is(queue.pending, 0);
-	t.is(queue.isPaused, true);
+	expect(queue.size).toBe(5);
+	expect(queue.pending).toBe(0);
+	expect(queue.isPaused).toBe(true);
 
 	queue.start();
-	t.is(queue.size, 3);
-	t.is(queue.pending, 2);
-	t.is(queue.isPaused, false);
+	expect(queue.size).toBe(3);
+	expect(queue.pending).toBe(2);
+	expect(queue.isPaused).toBe(false);
 
 	queue.add(async () => delay(20_000));
 	queue.pause();
-	t.is(queue.size, 4);
-	t.is(queue.pending, 2);
-	t.is(queue.isPaused, true);
+	expect(queue.size).toBe(4);
+	expect(queue.pending).toBe(2);
+	expect(queue.isPaused).toBe(true);
 
 	queue.start();
-	t.is(queue.size, 4);
-	t.is(queue.pending, 2);
-	t.is(queue.isPaused, false);
+	expect(queue.size).toBe(4);
+	expect(queue.pending).toBe(2);
+	expect(queue.isPaused).toBe(false);
 
 	queue.clear();
-	t.is(queue.size, 0);
+	expect(queue.size).toBe(0);
 });
 
 test('.add() sync/async mixed tasks', async t => {
@@ -484,28 +485,27 @@ test('.add() sync/async mixed tasks', async t => {
 	queue.add(async () => delay(1000));
 	queue.add(() => 'sync 2');
 	queue.add(() => fixture);
-	t.is(queue.size, 3);
-	t.is(queue.pending, 1);
+	expect(queue.size).toBe(3);
+	expect(queue.pending).toBe(1);
 	await queue.onIdle();
-	t.is(queue.size, 0);
-	t.is(queue.pending, 0);
+	expect(queue.size).toBe(0);
+	expect(queue.pending).toBe(0);
 });
 
-test.failing('.add() - handle task throwing error', async t => {
+test.fails('.add() - handle task throwing error', async t => {
 	const queue = new PQueue({concurrency: 1});
 
 	queue.add(() => 'sync 1');
-	await t.throwsAsync(
+	await expect(
 		queue.add(
 			() => {
 				throw new Error('broken');
 			},
 		),
-		{message: 'broken'},
-	);
+	).rejects.toThrow('broken');
 	queue.add(() => 'sync 2');
 
-	t.is(queue.size, 2);
+	expect(queue.size).toBe(2);
 
 	await queue.onIdle();
 });
@@ -513,22 +513,21 @@ test.failing('.add() - handle task throwing error', async t => {
 test('.add() - handle task promise failure', async t => {
 	const queue = new PQueue({concurrency: 1});
 
-	await t.throwsAsync(
+	await expect(
 		queue.add(
 			async () => {
 				throw new Error('broken');
 			},
 		),
-		{message: 'broken'},
-	);
+	).rejects.toThrow('broken');
 
 	queue.add(() => 'task #1');
 
-	t.is(queue.pending, 1);
+	expect(queue.pending).toBe(1);
 
 	await queue.onIdle();
 
-	t.is(queue.pending, 0);
+	expect(queue.pending).toBe(0);
 });
 
 test('.addAll() sync/async mixed tasks', async t => {
@@ -543,9 +542,9 @@ test('.addAll() sync/async mixed tasks', async t => {
 
 	const promise = queue.addAll(functions);
 
-	t.is(queue.size, 0);
-	t.is(queue.pending, 4);
-	t.deepEqual(await promise, ['sync 1', undefined, 'sync 2', fixture]);
+	expect(queue.size).toBe(0);
+	expect(queue.pending).toBe(4);
+	expect(await promise).toMatchObject(['sync 1', undefined, 'sync 2', fixture]);
 });
 
 test('should resolve empty when size is zero', async t => {
@@ -558,7 +557,7 @@ test('should resolve empty when size is zero', async t => {
 
 	(async () => {
 		await queue.onEmpty();
-		t.is(queue.size, 0);
+		expect(queue.size).toBe(0);
 	})();
 
 	queue.start();
@@ -587,9 +586,9 @@ test('.add() - throttled', async t => {
 	queue.start();
 	await delay(250);
 	queue.add(async () => result.push(2));
-	t.deepEqual(result, [1]);
+	expect(result).toMatchObject([1]);
 	await delay(300);
-	t.deepEqual(result, [1, 2]);
+	expect(result).toMatchObject([1, 2]);
 });
 
 test('.add() - throttled, carryoverConcurrencyCount false', async t => {
@@ -614,18 +613,18 @@ test('.add() - throttled, carryoverConcurrencyCount false', async t => {
 
 	(async () => {
 		await delay(550);
-		t.is(queue.pending, 2);
-		t.deepEqual(result, []);
+		expect(queue.pending).toBe(2);
+		expect(result).toMatchObject([]);
 	})();
 
 	(async () => {
 		await delay(650);
-		t.is(queue.pending, 1);
-		t.deepEqual(result, [0]);
+		expect(queue.pending).toBe(1);
+		expect(result).toMatchObject([0]);
 	})();
 
 	await delay(1250);
-	t.deepEqual(result, values);
+	expect(result).toMatchObject(values);
 });
 
 test('.add() - throttled, carryoverConcurrencyCount true', async t => {
@@ -650,29 +649,29 @@ test('.add() - throttled, carryoverConcurrencyCount true', async t => {
 
 	(async () => {
 		await delay(100);
-		t.deepEqual(result, []);
-		t.is(queue.pending, 1);
+		expect(result).toMatchObject([]);
+		expect(queue.pending).toBe(1);
 	})();
 
 	(async () => {
 		await delay(550);
-		t.deepEqual(result, []);
-		t.is(queue.pending, 1);
+		expect(result).toMatchObject([]);
+		expect(queue.pending).toBe(1);
 	})();
 
 	(async () => {
 		await delay(650);
-		t.deepEqual(result, [0]);
-		t.is(queue.pending, 0);
+		expect(result).toMatchObject([0]);
+		expect(queue.pending).toBe(0);
 	})();
 
 	(async () => {
 		await delay(1550);
-		t.deepEqual(result, [0]);
+		expect(result).toMatchObject([0]);
 	})();
 
 	await delay(1650);
-	t.deepEqual(result, values);
+	expect(result).toMatchObject(values);
 });
 
 test('.add() - throttled 10, concurrency 5', async t => {
@@ -698,27 +697,27 @@ test('.add() - throttled 10, concurrency 5', async t => {
 
 	queue.start();
 
-	t.deepEqual(result, []);
+	expect(result).toMatchObject([]);
 
 	(async () => {
 		await delay(400);
-		t.deepEqual(result, firstValue);
-		t.is(queue.pending, 5);
+		expect(result).toMatchObject(firstValue);
+		expect(queue.pending).toBe(5);
 	})();
 
 	(async () => {
 		await delay(700);
-		t.deepEqual(result, secondValue);
+		expect(result).toMatchObject(secondValue);
 	})();
 
 	(async () => {
 		await delay(1200);
-		t.is(queue.pending, 3);
-		t.deepEqual(result, secondValue);
+		expect(queue.pending).toBe(3);
+		expect(result).toMatchObject(secondValue);
 	})();
 
 	await delay(1400);
-	t.deepEqual(result, thirdValue);
+	expect(result).toMatchObject(thirdValue);
 });
 
 test('.add() - throttled finish and resume', async t => {
@@ -746,7 +745,7 @@ test('.add() - throttled finish and resume', async t => {
 
 	(async () => {
 		await delay(1000);
-		t.deepEqual(result, firstValue);
+		expect(result).toMatchObject(firstValue);
 
 		queue.add(async () => {
 			await delay(100);
@@ -756,11 +755,11 @@ test('.add() - throttled finish and resume', async t => {
 
 	(async () => {
 		await delay(1500);
-		t.deepEqual(result, firstValue);
+		expect(result).toMatchObject(firstValue);
 	})();
 
 	await delay(2200);
-	t.deepEqual(result, secondValue);
+	expect(result).toMatchObject(secondValue);
 });
 
 test('pause should work when throttled', async t => {
@@ -788,7 +787,7 @@ test('pause should work when throttled', async t => {
 
 	(async () => {
 		await delay(300);
-		t.deepEqual(result, firstValue);
+		expect(result).toMatchObject(firstValue);
 	})();
 
 	(async () => {
@@ -798,7 +797,7 @@ test('pause should work when throttled', async t => {
 
 	(async () => {
 		await delay(1400);
-		t.deepEqual(result, firstValue);
+		expect(result).toMatchObject(firstValue);
 	})();
 
 	(async () => {
@@ -808,7 +807,7 @@ test('pause should work when throttled', async t => {
 
 	(async () => {
 		await delay(2200);
-		t.deepEqual(result, secondValue);
+		expect(result).toMatchObject(secondValue);
 	})();
 
 	await delay(2500);
@@ -828,12 +827,12 @@ test('clear interval on pause', async t => {
 
 	await delay(300);
 
-	t.is(queue.size, 1);
+	expect(queue.size).toBe(1);
 });
 
 test('should be an event emitter', t => {
 	const queue = new PQueue();
-	t.true(queue instanceof EventEmitter);
+	expect(queue instanceof EventEmitter).toBeTruthy();
 });
 
 test('should emit active event per item', async t => {
@@ -851,7 +850,7 @@ test('should emit active event per item', async t => {
 
 	await queue.onIdle();
 
-	t.is(eventCount, items.length);
+	expect(eventCount).toBe(items.length);
 });
 
 test('should emit idle event when idle', async t => {
@@ -865,32 +864,32 @@ test('should emit idle event when idle', async t => {
 	const job1 = queue.add(async () => delay(100));
 	const job2 = queue.add(async () => delay(100));
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 1);
-	t.is(timesCalled, 0);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(1);
+	expect(timesCalled).toBe(0);
 
 	await job1;
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 0);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(0);
 
 	await job2;
 
-	t.is(queue.pending, 0);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 1);
+	expect(queue.pending).toBe(0);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(1);
 
 	const job3 = queue.add(async () => delay(100));
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 1);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(1);
 
 	await job3;
-	t.is(queue.pending, 0);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 2);
+	expect(queue.pending).toBe(0);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(2);
 });
 
 test('should emit empty event when empty', async t => {
@@ -906,23 +905,23 @@ test('should emit empty event when empty', async t => {
 
 	const job1 = queue.add(async () => job1Promise);
 	const job2 = queue.add(async () => job2Promise);
-	t.is(queue.size, 1);
-	t.is(queue.pending, 1);
-	t.is(timesCalled, 0);
+	expect(queue.size).toBe(1);
+	expect(queue.pending).toBe(1);
+	expect(timesCalled).toBe(0);
 
 	resolveJob1();
 	await job1;
 
-	t.is(queue.size, 0);
-	t.is(queue.pending, 1);
-	t.is(timesCalled, 0);
+	expect(queue.size).toBe(0);
+	expect(queue.pending).toBe(1);
+	expect(timesCalled).toBe(0);
 
 	resolveJob2();
 	await job2;
 
-	t.is(queue.size, 0);
-	t.is(queue.pending, 0);
-	t.is(timesCalled, 1);
+	expect(queue.size).toBe(0);
+	expect(queue.pending).toBe(0);
+	expect(timesCalled).toBe(1);
 });
 
 test('should emit add event when adding task', async t => {
@@ -935,38 +934,38 @@ test('should emit add event when adding task', async t => {
 
 	const job1 = queue.add(async () => delay(100));
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 1);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(1);
 
 	const job2 = queue.add(async () => delay(100));
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 1);
-	t.is(timesCalled, 2);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(1);
+	expect(timesCalled).toBe(2);
 
 	await job1;
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 2);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(2);
 
 	await job2;
 
-	t.is(queue.pending, 0);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 2);
+	expect(queue.pending).toBe(0);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(2);
 
 	const job3 = queue.add(async () => delay(100));
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 3);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(3);
 
 	await job3;
-	t.is(queue.pending, 0);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 3);
+	expect(queue.pending).toBe(0);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(3);
 });
 
 test('should emit next event when completing task', async t => {
@@ -979,38 +978,38 @@ test('should emit next event when completing task', async t => {
 
 	const job1 = queue.add(async () => delay(100));
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 0);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(0);
 
 	const job2 = queue.add(async () => delay(100));
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 1);
-	t.is(timesCalled, 0);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(1);
+	expect(timesCalled).toBe(0);
 
 	await job1;
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 1);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(1);
 
 	await job2;
 
-	t.is(queue.pending, 0);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 2);
+	expect(queue.pending).toBe(0);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(2);
 
 	const job3 = queue.add(async () => delay(100));
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 2);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(2);
 
 	await job3;
-	t.is(queue.pending, 0);
-	t.is(queue.size, 0);
-	t.is(timesCalled, 3);
+	expect(queue.pending).toBe(0);
+	expect(queue.size).toBe(0);
+	expect(timesCalled).toBe(3);
 });
 
 test('should emit completed / error events', async t => {
@@ -1027,71 +1026,71 @@ test('should emit completed / error events', async t => {
 
 	const job1 = queue.add(async () => delay(100));
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 0);
-	t.is(errorEvents, 0);
-	t.is(completedEvents, 0);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(0);
+	expect(errorEvents).toBe(0);
+	expect(completedEvents).toBe(0);
 
 	const job2 = queue.add(async () => {
 		await delay(1);
 		throw new Error('failure');
 	});
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 1);
-	t.is(errorEvents, 0);
-	t.is(completedEvents, 0);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(1);
+	expect(errorEvents).toBe(0);
+	expect(completedEvents).toBe(0);
 
 	await job1;
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 0);
-	t.is(errorEvents, 0);
-	t.is(completedEvents, 1);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(0);
+	expect(errorEvents).toBe(0);
+	expect(completedEvents).toBe(1);
 
-	await t.throwsAsync(job2);
+	await expect(job2).rejects.toThrow();
 
-	t.is(queue.pending, 0);
-	t.is(queue.size, 0);
-	t.is(errorEvents, 1);
-	t.is(completedEvents, 1);
+	expect(queue.pending).toBe(0);
+	expect(queue.size).toBe(0);
+	expect(errorEvents).toBe(1);
+	expect(completedEvents).toBe(1);
 
 	const job3 = queue.add(async () => delay(100));
 
-	t.is(queue.pending, 1);
-	t.is(queue.size, 0);
-	t.is(errorEvents, 1);
-	t.is(completedEvents, 1);
+	expect(queue.pending).toBe(1);
+	expect(queue.size).toBe(0);
+	expect(errorEvents).toBe(1);
+	expect(completedEvents).toBe(1);
 
 	await job3;
-	t.is(queue.pending, 0);
-	t.is(queue.size, 0);
-	t.is(errorEvents, 1);
-	t.is(completedEvents, 2);
+	expect(queue.pending).toBe(0);
+	expect(queue.size).toBe(0);
+	expect(errorEvents).toBe(1);
+	expect(completedEvents).toBe(2);
 });
 
 test('should verify timeout overrides passed to add', async t => {
 	const queue = new PQueue({timeout: 200, throwOnTimeout: true});
 
-	await t.throwsAsync(queue.add(async () => {
+	await expect(queue.add(async () => {
 		await delay(400);
-	}));
+	})).rejects.toThrow();
 
-	await t.notThrowsAsync(queue.add(async () => {
+	await expect(queue.add(async () => {
 		await delay(400);
-	}, {throwOnTimeout: false}));
+	}, {throwOnTimeout: false})).resolves.not.toThrow();
 
-	await t.notThrowsAsync(queue.add(async () => {
+	await expect(queue.add(async () => {
 		await delay(400);
-	}, {timeout: 600}));
+	}, {timeout: 600})).resolves.not.toThrow();
 
-	await t.notThrowsAsync(queue.add(async () => {
+	await expect(queue.add(async () => {
 		await delay(100);
-	}));
+	})).resolves.not.toThrow();
 
-	await t.throwsAsync(queue.add(async () => {
+	await expect(queue.add(async () => {
 		await delay(100);
-	}, {timeout: 50}));
+	}, {timeout: 50})).rejects.toThrow();
 
 	await queue.onIdle();
 });
@@ -1102,9 +1101,7 @@ test('should skip an aborted job', async t => {
 
 	controller.abort();
 	// eslint-disable-next-line @typescript-eslint/no-empty-function
-	await t.throwsAsync(queue.add(() => {}, {signal: controller.signal}), {
-		instanceOf: DOMException,
-	});
+	await expect(queue.add(() => {}, {signal: controller.signal})).rejects.toThrow(DOMException);
 });
 
 test('should pass AbortSignal instance to job', async t => {
@@ -1112,7 +1109,7 @@ test('should pass AbortSignal instance to job', async t => {
 	const controller = new AbortController();
 
 	await queue.add(async ({signal}) => {
-		t.is(controller.signal, signal!);
+		expect(controller.signal).toBe(signal);
 	}, {signal: controller.signal});
 });
 
@@ -1130,7 +1127,7 @@ test('aborting multiple jobs at the same time', async t => {
 		controller2.abort();
 	}, 0);
 
-	await t.throwsAsync(task1, {instanceOf: DOMException});
-	await t.throwsAsync(task2, {instanceOf: DOMException});
-	t.like(queue, {size: 0, pending: 0});
+	await expect(task1).rejects.toThrow(DOMException);
+	await expect(task2).rejects.toThrow(DOMException);
+	expect(queue).toMatchObject({size: 0, pending: 0});
 });
